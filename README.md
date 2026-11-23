@@ -1,34 +1,64 @@
-# KOX Shield — образ sing-box для MikroTik ARM v5
+# KOX Shield — MikroTik с процессором ARM v5
 
-Отдельный образ контейнера для роутеров, у которых процессор выполняет только **ARM v5** (`firmware-type: en7562`). Обычный образ `ghcr.io/sagernet/sing-box` на них сразу завершается с `Illegal instruction`.
+Образ sing-box для роутеров, у которых `/system routerboard print` показывает `firmware-type: en7562`. Обычный образ `ghcr.io/sagernet/sing-box:v1.11.7` на них сразу завершается с `Illegal instruction`.
 
-Проверенная модель: **hEX Refresh, E50UG**. Тот же образ нужен любой плате, у которой команда ниже показывает `en7562`:
+Проверенная модель: **hEX Refresh (E50UG)**. Тот же образ нужен любой плате с `en7562`.
+
+Это не отдельная программа. Маршруты, подписка и команды KOX живут в основном проекте: **[kox-shield-mikrotik](https://github.com/nonamenebula/kox-shield-mikrotik)**. Здесь только образ контейнера и то, чем первый запуск на ARM v5 отличается.
+
+## Первый запуск
+
+Установщик **2.9** сам скачивает этот образ, если видит процессор `en7562`. Образ руками собирать не нужно.
+
+1. Оформите подписку в [@kox_nonamenebula_bot](https://t.me/kox_nonamenebula_bot) и откройте [личный кабинет](https://kox.nonamenebula.ru) → вкладка **MikroTik**. Готовую команду лучше копировать оттуда: в ней уже ваш токен.
+2. Подготовьте роутер: пакет `container` и выключенный FastTrack. Шаги: [подготовка RouterOS](https://github.com/nonamenebula/kox-shield-mikrotik#шаг-1-подготовьте-routeros) и [FastTrack](https://github.com/nonamenebula/kox-shield-mikrotik#шаг-2-отключите-fasttrack).
+3. Вставьте команду из личного кабинета. Если собираете её сами, подставьте свой токен:
 
 ```routeros
-/system routerboard print
+:global koxSubUrl "https://kox.nonamenebula.ru/c/YOUR_TOKEN"
+/tool fetch url=https://raw.githubusercontent.com/nonamenebula/kox-shield-mikrotik/main/install.rsc
+/import file-name=install.rsc
 ```
 
-Установщик для остальных роутеров: [kox-shield-mikrotik](https://github.com/nonamenebula/kox-shield-mikrotik). На процессоре `en7562` он сам берёт этот образ.
+Дождитесь окончания. В логе установщика должна быть строка про процессор `en7562` и образ sing-box 1.11.9, не `ghcr.io/sagernet/sing-box:v1.11.7`.
 
-## Что внутри
+4. Проверьте, что контейнер запущен:
 
-| | |
+```routeros
+/container/print
+/log/print where topics~"container"
+```
+
+Статус `running`, в логе нет `Illegal instruction`. Дальше — [проверка туннеля](https://github.com/nonamenebula/kox-shield-mikrotik#шаг-4-проверка): ping через таблицу `r_to_vpn` и список `to_vpn`.
+
+На диске hEX Refresh 128 МБ. Архив образа около 11 МБ, после распаковки каталог контейнера около 31 МБ. Когда контейнер остался `running`, файл `kox-singbox-armv5.tar` можно удалить.
+
+## Дальше: серверы, списки, включение
+
+Смена локации, категории сайтов и включение туннеля описаны в основной инструкции. Образ для этого повторно ставить не нужно.
+
+| Что сделать | Куда смотреть |
 |---|---|
-| Программа | официальный [sing-box 1.11.9](https://github.com/SagerNet/sing-box/releases/tag/v1.11.9), сборка `linux-armv5` |
-| Система образа | `linux/arm/v5` |
-| Файл | статически собранный ELF ARM EABI5 |
-| Запуск | `sing-box run -c /etc/sing-box/config.json` |
+| Список локаций и переключение | [`$kox switch`](https://github.com/nonamenebula/kox-shield-mikrotik#у-вас-подписка-kox-shield-рекомендуется) |
+| Какие сайты идут через VPN | [Категории доменов](https://github.com/nonamenebula/kox-shield-mikrotik#категории-доменов) |
+| Статус, логи, выключить туннель | [Полезные команды](https://github.com/nonamenebula/kox-shield-mikrotik#полезные-команды) |
+| Удалить KOX с роутера | [Удаление](https://github.com/nonamenebula/kox-shield-mikrotik#удаление) |
 
-Формат конфига тот же, что у установщика с образом 1.11.7. Подписку заново собирать не нужно.
+Переключение сервера, если скрипт ещё не загружен в эту сессию терминала:
 
-Готовый архив для роутера:
+```routeros
+/import file-name=kox-switch.rsc
+$kox switch
+$kox switch 1
+```
 
-- выпуск GitHub: `sing-box-1.11.9-armv5.tar` в [Releases](https://github.com/nonamenebula/kox-shield-mikrotik-armv5/releases)
-- зеркало, если с роутера GitHub не открывается: `https://kox.nonamenebula.ru/static/kox-mikrotik/sing-box-1.11.9-armv5.tar`
+Без номера печатается список локаций и пинг. С номером контейнер переключается на эту локацию. Номер берите из списка, не из памяти: порядок серверов в подписке может меняться.
 
-## Если контейнер уже ставился обычным образом
+## Контейнер уже установлен и падает
 
-Папку `kox-mount` не удаляйте: в ней конфиг. Папку старого контейнера `kox-singbox` удалите. Если контейнер уже остановлен, ошибку первой команды можно пропустить.
+Так бывает после установщика старше 2.9: маршруты и подписка уже есть, а контейнер скачал обычный образ и сразу остановился с `Illegal instruction`. Заново всю установку запускать не нужно. Папку `kox-mount` не удаляйте, в ней конфиг. Удалите только старый контейнер и его папку `kox-singbox`.
+
+Если контейнер уже остановлен, ошибку первой команды можно пропустить.
 
 ```routeros
 /container/stop [find where comment="kox-shield-singbox"]
@@ -36,30 +66,29 @@
 /container/remove [find where comment="kox-shield-singbox"]
 ```
 
+В **Files** удалите папку `kox-singbox`, если она осталась. Затем:
+
 ```routeros
 /tool fetch url="https://kox.nonamenebula.ru/static/kox-mikrotik/sing-box-1.11.9-armv5.tar" mode=https dst-path=kox-singbox-armv5.tar
 /container/add file=kox-singbox-armv5.tar hostname=kox-singbox interface=docker-xray-vless-veth root-dir=kox-singbox logging=yes start-on-boot=yes mountlists=kox-singbox-cfg dns=172.18.20.5 cmd="run -c /etc/sing-box/config.json" comment="kox-shield-singbox"
 /container/start [find where comment="kox-shield-singbox"]
+/container/print
 ```
 
-Архив около 11 МБ, после распаковки каталог контейнера около 31 МБ. На hEX Refresh диск 128 МБ, перед загрузкой старый контейнер нужно убрать. Когда контейнер останется в состоянии running, файл `kox-singbox-armv5.tar` можно удалить.
+Подождите, пока статус станет `running`. В логе не должно быть `Illegal instruction`. После этого выберите локацию командами из раздела выше. Файл `kox-singbox-armv5.tar` можно удалить.
 
-## Проверка образа
+Тот же архив, если зеркало недоступно: [выпуск v1.11.9](https://github.com/nonamenebula/kox-shield-mikrotik-armv5/releases/tag/v1.11.9).
 
-На машине с эмуляцией `linux/arm/v5` проверено:
+## Что внутри образа
 
-- `sing-box version` печатает `1.11.9` и завершается без `Illegal instruction`;
-- `sing-box check` принимает конфиг того же вида, что собирает установщик: TUN `172.19.0.1/30`, Hysteria2, `auto_route`;
-- `sing-box run` поднимает интерфейс `tun0`.
+| | |
+|---|---|
+| Программа | официальный [sing-box 1.11.9](https://github.com/SagerNet/sing-box/releases/tag/v1.11.9), сборка `linux-armv5` |
+| Система образа | `linux/arm/v5` |
+| Запуск | `sing-box run -c /etc/sing-box/config.json` |
 
-Дальше на обычном компьютере нет фильтра RouterOS, поэтому правила маршрутизации внутри контейнера там не проверяются. Рабочий туннель до сервера KOX подтверждается уже на роутере: контейнер остаётся `running`, в логе нет `Illegal instruction`.
+Формат конфига тот же, что у установщика с образом 1.11.7. Подписку заново собирать не нужно.
 
-## Сборка заново
+На эмуляции ARM v5 проверено: `sing-box version` печатает 1.11.9, `sing-box check` принимает конфиг установщика, `sing-box run` поднимает `tun0`. Живой туннель до сервера KOX проверяется уже на роутере.
 
-Нужны Docker Buildx и официальный архив `linux-armv5`. Бинарник в git не хранится.
-
-```sh
-sh build.sh 1.11.9
-```
-
-На выходе файл `sing-box-1.11.9-armv5.tar`.
+Собрать архив заново: `sh build.sh 1.11.9`. Нужны Docker Buildx и официальный архив `linux-armv5`. Бинарник в git не хранится.
